@@ -18,7 +18,7 @@ const initializePassport = () => {
         {
           clientID: googleClientId,
           clientSecret: googleClientSecret,
-          callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/auth/google/callback',
+          callbackURL: process.env.GOOGLE_CALLBACK_URL || 'https://shop-bicycle-backend.onrender.com/api/auth/google/callback',
           scope: ['profile', 'email'],
           proxy: true
         },
