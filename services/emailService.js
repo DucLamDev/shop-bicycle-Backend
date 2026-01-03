@@ -159,6 +159,74 @@ const templates = {
     };
   },
 
+  miniGamePrize: (customer, prize, coupon, language = 'vi') => {
+    const isJa = language === 'ja';
+    return {
+      subject: isJa 
+        ? `【HBike Japan】🎉 おめでとうございます！ラッキースピンの賞品` 
+        : `【HBike Japan】🎉 Chúc mừng! Bạn đã trúng thưởng vòng quay may mắn`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
+            .prize-box { background: linear-gradient(135deg, #fef3c7, #fde68a); padding: 25px; text-align: center; border-radius: 12px; margin: 20px 0; border: 2px dashed #f59e0b; }
+            .code { font-size: 36px; font-weight: bold; color: #d97706; letter-spacing: 3px; font-family: monospace; }
+            .btn { display: inline-block; background: #8b5cf6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; }
+            .footer { background: #1f2937; color: #9ca3af; padding: 20px; text-align: center; border-radius: 0 0 10px 10px; }
+            .confetti { font-size: 24px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <p class="confetti">🎊🎉🎊</p>
+              <h1>🎰 ${isJa ? 'ラッキースピン当選' : 'Vòng Quay May Mắn'}</h1>
+              <p>${isJa ? 'おめでとうございます！' : 'Chúc mừng bạn!'}</p>
+            </div>
+            <div class="content">
+              <p>${isJa ? 'お客様' : 'Xin chào'} <strong>${customer.name || customer.email}</strong>,</p>
+              <p>${isJa ? 'ラッキースピンで賞品が当たりました！' : 'Bạn đã trúng thưởng từ Vòng Quay May Mắn!'}</p>
+              
+              <div class="prize-box">
+                <p style="font-size: 18px; margin-bottom: 10px;">${isJa ? 'あなたの賞品' : 'Phần thưởng của bạn'}:</p>
+                <p style="font-size: 28px; font-weight: bold; color: #7c3aed;">🎁 ${prize.nameVi || prize.name}</p>
+                ${coupon ? `
+                <hr style="border: none; border-top: 1px dashed #d97706; margin: 20px 0;">
+                <p>${isJa ? 'クーポンコード' : 'Mã giảm giá'}:</p>
+                <p class="code">${coupon.code}</p>
+                <p style="color: #6b7280; font-size: 14px;">
+                  ${isJa ? '有効期限' : 'Có hiệu lực đến'}: ${new Date(coupon.validUntil).toLocaleDateString(isJa ? 'ja-JP' : 'vi-VN')}
+                </p>
+                ` : ''}
+              </div>
+              
+              <p style="text-align: center;">
+                <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/products" class="btn">
+                  ${isJa ? '今すぐ使う' : 'Sử dụng ngay'}
+                </a>
+              </p>
+              
+              <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">
+                ${isJa ? '※ クーポンはお支払い時に自動適用されます。' : '* Mã giảm giá sẽ được tự động áp dụng khi thanh toán.'}
+              </p>
+            </div>
+            <div class="footer">
+              <p>HBike Japan</p>
+              <p>〒651-0077 神戸市中央区日暮通2-4-18-1F</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+  },
+
   promotionNotification: (customer, promotion, language = 'vi') => {
     const isJa = language === 'ja';
     return {
@@ -256,10 +324,131 @@ export async function sendPromotionNotification(customers, promotion, language =
   return results;
 }
 
+// Send mini-game prize notification
+export async function sendMiniGamePrizeEmail(customer, prize, coupon, language = 'vi') {
+  try {
+    const transporter = createTransporter();
+    const emailContent = templates.miniGamePrize(customer, prize, coupon, language);
+
+    const mailOptions = {
+      from: `"HBike Japan" <${process.env.GMAIL_USER}>`,
+      to: customer.email,
+      subject: emailContent.subject,
+      html: emailContent.html
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Mini-game prize email sent:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Mini-game prize email error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Student verification approval email template
+const studentVerificationApprovalTemplate = (verification, language = 'vi') => {
+  const isJa = language === 'ja';
+  return {
+    subject: isJa 
+      ? `【HBike Japan】学生認証が承認されました - ${verification.discountPercent}%割引コード` 
+      : `【HBike Japan】Xác minh sinh viên đã được duyệt - Mã giảm ${verification.discountPercent}%`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #8b5cf6, #6366f1); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
+          .discount-box { background: linear-gradient(135deg, #fef3c7, #fde68a); padding: 25px; border-radius: 12px; margin: 20px 0; text-align: center; border: 2px dashed #f59e0b; }
+          .discount-code { font-size: 32px; font-weight: bold; color: #d97706; letter-spacing: 3px; margin: 10px 0; }
+          .discount-percent { font-size: 48px; font-weight: bold; color: #dc2626; }
+          .info-box { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .footer { background: #1f2937; color: #9ca3af; padding: 20px; text-align: center; border-radius: 0 0 10px 10px; }
+          .btn { display: inline-block; background: #8b5cf6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; margin: 15px 0; font-weight: bold; }
+          .expires { color: #6b7280; font-size: 14px; margin-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🎓 HBike Japan</h1>
+            <p>${isJa ? '学生認証が承認されました！' : 'Xác minh sinh viên đã được duyệt!'}</p>
+          </div>
+          <div class="content">
+            <h2>${isJa ? 'おめでとうございます！' : 'Chúc mừng bạn!'}</h2>
+            <p>${isJa ? '' : 'Xin chào'} <strong>${verification.customerName}</strong>,</p>
+            <p>${isJa 
+              ? 'あなたの学生認証が承認されました。以下の割引コードをお使いいただけます：' 
+              : 'Yêu cầu xác minh sinh viên của bạn đã được phê duyệt. Bạn có thể sử dụng mã giảm giá dưới đây:'}</p>
+            
+            <div class="discount-box">
+              <div>${isJa ? '割引率' : 'Giảm giá'}</div>
+              <div class="discount-percent">${verification.discountPercent}%</div>
+              <div>${isJa ? '割引コード' : 'Mã giảm giá'}</div>
+              <div class="discount-code">${verification.discountCode}</div>
+              <p class="expires">${isJa 
+                ? `有効期限: ${new Date(verification.discountExpiresAt).toLocaleDateString('ja-JP')}` 
+                : `Hạn sử dụng: ${new Date(verification.discountExpiresAt).toLocaleDateString('vi-VN')}`}</p>
+            </div>
+
+            <div class="info-box">
+              <h3>${isJa ? '使用方法' : 'Cách sử dụng'}</h3>
+              <ol>
+                <li>${isJa ? '商品をカートに追加' : 'Thêm sản phẩm vào giỏ hàng'}</li>
+                <li>${isJa ? 'チェックアウト時に割引コードを入力' : 'Nhập mã giảm giá khi thanh toán'}</li>
+                <li>${isJa ? '割引が自動的に適用されます' : 'Giảm giá sẽ được áp dụng tự động'}</li>
+              </ol>
+            </div>
+
+            <div style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" class="btn">
+                ${isJa ? '今すぐ買い物する' : 'Mua sắm ngay'}
+              </a>
+            </div>
+          </div>
+          <div class="footer">
+            <p>© 2024 HBike Japan. ${isJa ? '全著作権所有' : 'All rights reserved.'}</p>
+            <p>${isJa ? 'ご質問がございましたら、お気軽にお問い合わせください。' : 'Nếu có thắc mắc, vui lòng liên hệ với chúng tôi.'}</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+  };
+};
+
+// Send student verification approval email
+async function sendStudentVerificationApproval(verification, language = 'vi') {
+  try {
+    const transporter = createTransporter();
+    const emailContent = studentVerificationApprovalTemplate(verification, language);
+
+    const mailOptions = {
+      from: `"HBike Japan" <${process.env.GMAIL_USER}>`,
+      to: verification.email,
+      subject: emailContent.subject,
+      html: emailContent.html
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Student verification approval email sent:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Student verification approval email error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 export default {
   sendEmail,
   sendOrderConfirmation,
   sendOrderStatusUpdate,
   sendPromotionNotification,
+  sendMiniGamePrizeEmail,
+  sendStudentVerificationApproval,
   templates
 };

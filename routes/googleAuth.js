@@ -1,8 +1,52 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import passport from '../config/passport.js';
 import User from '../models/User.js';
 
 const router = express.Router();
+
+// Helper function to generate JWT token
+const generateToken = (user) => {
+  return jwt.sign(
+    { id: user._id, email: user.email, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+};
+
+// Google OAuth - Redirect to Google
+router.get('/google',
+  passport.authenticate('google', { session: false, scope: ['profile', 'email'] })
+);
+
+// Google OAuth - Callback
+router.get('/google/callback',
+  (req, res, next) => {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    passport.authenticate('google', { 
+      session: false, 
+      failureRedirect: `${frontendUrl}/login?error=google_auth_failed` 
+    })(req, res, next);
+  },
+  (req, res) => {
+    try {
+      const token = generateToken(req.user);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const redirectUrl = `${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+        avatar: req.user.avatar
+      }))}`;
+      res.redirect(redirectUrl);
+    } catch (error) {
+      console.error('Google OAuth callback error:', error);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      res.redirect(`${frontendUrl}/login?error=token_generation_failed`);
+    }
+  }
+);
 
 /**
  * @route   POST /api/auth/google

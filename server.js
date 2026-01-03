@@ -8,6 +8,8 @@ import morgan from 'morgan';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import passport from 'passport';
+import { initializePassport } from './config/passport.js';
 
 import authRoutes from './routes/auth.js';
 import googleAuthRoutes from './routes/googleAuth.js';
@@ -25,10 +27,12 @@ import miniGameRoutes from './routes/miniGame.js';
 import affiliateRoutes from './routes/affiliate.js';
 import studentVerificationRoutes from './routes/studentVerification.js';
 import chatRoutes from './routes/chat.js';
+import uploadRoutes from './routes/upload.js';
 
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // Trust first proxy for HTTPS on Render/Heroku
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
@@ -48,9 +52,13 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static('uploads'));
+
+// Initialize Passport
+initializePassport();
+app.use(passport.initialize());
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -78,6 +86,7 @@ app.use('/api/mini-game', miniGameRoutes);
 app.use('/api/affiliate', affiliateRoutes);
 app.use('/api/student-verification', studentVerificationRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/upload', uploadRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });

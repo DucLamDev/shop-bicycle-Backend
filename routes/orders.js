@@ -288,6 +288,119 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Generate PDF invoice
+router.get('/:id/invoice', protect, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate('items.product')
+      .populate('partner');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    const PDFDocument = (await import('pdfkit')).default;
+    const doc = new PDFDocument({ margin: 50 });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=invoice-${order.orderNumber || order._id.toString().slice(-6)}.pdf`);
+
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(24).fillColor('#e74c3c').text('XE ĐẠP NHẬT BẢN', { align: 'center' });
+    doc.fontSize(12).fillColor('#666').text('Hóa đơn bán hàng / Invoice', { align: 'center' });
+    doc.moveDown();
+
+    // Order Info
+    doc.fontSize(10).fillColor('#333');
+    doc.text(`Mã đơn hàng: #${order.orderNumber || order._id.toString().slice(-6).toUpperCase()}`);
+    doc.text(`Ngày đặt: ${new Date(order.createdAt).toLocaleDateString('vi-VN')}`);
+    doc.text(`Trạng thái: ${order.orderStatus}`);
+    doc.text(`Thanh toán: ${order.paymentMethod === 'cod' ? 'COD' : order.paymentMethod}`);
+    doc.moveDown();
+
+    // Customer Info
+    doc.fontSize(12).fillColor('#e74c3c').text('THÔNG TIN KHÁCH HÀNG');
+    doc.fontSize(10).fillColor('#333');
+    doc.text(`Tên: ${order.customer?.name || 'N/A'}`);
+    doc.text(`SĐT: ${order.customer?.phone || 'N/A'}`);
+    doc.text(`Email: ${order.customer?.email || 'N/A'}`);
+    doc.text(`Địa chỉ: ${order.customer?.address || 'N/A'}`);
+    doc.moveDown();
+
+    // Items Table Header
+    doc.fontSize(12).fillColor('#e74c3c').text('SẢN PHẨM');
+    doc.moveDown(0.5);
+    
+    const tableTop = doc.y;
+    doc.fontSize(9).fillColor('#666');
+    doc.text('Sản phẩm', 50, tableTop);
+    doc.text('Đơn giá', 280, tableTop);
+    doc.text('SL', 380, tableTop);
+    doc.text('Thành tiền', 420, tableTop, { align: 'right', width: 100 });
+    
+    doc.moveTo(50, tableTop + 15).lineTo(520, tableTop + 15).stroke('#ddd');
+    
+    let itemY = tableTop + 25;
+    doc.fillColor('#333');
+    
+    for (const item of order.items) {
+      const itemTotal = (item.price || 0) * (item.quantity || 1);
+      doc.fontSize(9);
+      doc.text(item.name || item.product?.name || 'Sản phẩm', 50, itemY, { width: 220 });
+      doc.text(`¥${(item.price || 0).toLocaleString()}`, 280, itemY);
+      doc.text(String(item.quantity || 1), 380, itemY);
+      doc.text(`¥${itemTotal.toLocaleString()}`, 420, itemY, { align: 'right', width: 100 });
+      itemY += 20;
+    }
+
+    doc.moveTo(50, itemY).lineTo(520, itemY).stroke('#ddd');
+    itemY += 15;
+
+    // Totals
+    doc.fontSize(10);
+    doc.text(`Tạm tính:`, 350, itemY);
+    doc.text(`¥${(order.subtotal || 0).toLocaleString()}`, 420, itemY, { align: 'right', width: 100 });
+    itemY += 18;
+
+    if (order.shippingFee) {
+      doc.text(`Phí vận chuyển:`, 350, itemY);
+      doc.text(`¥${order.shippingFee.toLocaleString()}`, 420, itemY, { align: 'right', width: 100 });
+      itemY += 18;
+    }
+
+    if (order.discount) {
+      doc.fillColor('#27ae60').text(`Giảm giá:`, 350, itemY);
+      doc.text(`-¥${order.discount.toLocaleString()}`, 420, itemY, { align: 'right', width: 100 });
+      itemY += 18;
+    }
+
+    doc.moveTo(350, itemY).lineTo(520, itemY).stroke('#e74c3c');
+    itemY += 10;
+    
+    doc.fontSize(14).fillColor('#e74c3c');
+    doc.text(`TỔNG CỘNG:`, 350, itemY);
+    doc.text(`¥${(order.totalAmount || 0).toLocaleString()}`, 420, itemY, { align: 'right', width: 100 });
+
+    // Footer
+    doc.fontSize(9).fillColor('#666');
+    doc.text('Cảm ơn quý khách đã mua hàng!', 50, 700, { align: 'center', width: 500 });
+    doc.text('Hotline: 0123-456-789 | Email: support@xedapnhatban.com', 50, 715, { align: 'center', width: 500 });
+
+    doc.end();
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
 router.delete('/:id', protect, authorize('admin'), async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);

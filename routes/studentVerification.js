@@ -3,6 +3,7 @@ import StudentVerification from '../models/StudentVerification.js';
 import Partner from '../models/Partner.js';
 import Coupon from '../models/Coupon.js';
 import { protect, authorize } from '../middleware/auth.js';
+import emailService from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -204,13 +205,22 @@ router.put('/:id/approve', protect, authorize('admin'), async (req, res) => {
     verification.reviewedBy = req.user._id;
     await verification.save();
 
+    // Send email notification immediately with discount code
+    try {
+      await emailService.sendStudentVerificationApproval(verification);
+      console.log(`Student verification approval email sent to ${verification.email}`);
+    } catch (emailError) {
+      console.error('Failed to send approval email:', emailError);
+    }
+
     res.json({
       success: true,
-      message: 'Đã phê duyệt và tạo mã giảm giá',
+      message: 'Đã phê duyệt và tạo mã giảm giá. Email đã được gửi đến sinh viên.',
       data: {
         discountCode,
         discountPercent,
-        expiresAt
+        expiresAt,
+        emailSent: true
       }
     });
   } catch (error) {

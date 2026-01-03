@@ -161,4 +161,45 @@ router.get('/users', protect, async (req, res) => {
   }
 });
 
+// Get single user by ID (admin only)
+router.get('/users/:id', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized'
+      });
+    }
+
+    const user = await User.findById(req.params.id).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Get order stats
+    const Order = (await import('../models/Order.js')).default;
+    const orders = await Order.find({ 'customer.email': user.email });
+    const totalOrders = orders.length;
+    const totalSpent = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+
+    res.json({
+      success: true,
+      data: {
+        ...user.toObject(),
+        totalOrders,
+        totalSpent
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
 export default router;

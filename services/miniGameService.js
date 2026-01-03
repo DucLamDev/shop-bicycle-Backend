@@ -42,7 +42,8 @@ function generateCouponCode(prefix = 'SPIN') {
 
 // Create coupon from prize
 async function createPrizeCoupon(prize, userId = null) {
-  if (prize.type === 'none') {
+  // Don't create coupon for 'none' (try again) or 'gift' (physical gift) types
+  if (prize.type === 'none' || prize.type === 'gift') {
     return null;
   }
 
@@ -92,7 +93,9 @@ export async function playSpinWheel(playerId = null) {
     } : null,
     message: prize.type === 'none' 
       ? 'Chúc bạn may mắn lần sau!' 
-      : `Chúc mừng! Bạn đã nhận được ${prize.nameVi}!`
+      : prize.type === 'gift'
+        ? `Chúc mừng! Bạn đã nhận được ${prize.nameVi}! Liên hệ cửa hàng để nhận quà.`
+        : `Chúc mừng! Bạn đã nhận được ${prize.nameVi}!`
   };
 }
 
