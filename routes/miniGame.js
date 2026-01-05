@@ -1,16 +1,34 @@
 import express from 'express';
 import miniGameService from '../services/miniGameService.js';
 import Coupon from '../models/Coupon.js';
+import User from '../models/User.js';
 
 const router = express.Router();
 
 // Get wheel configuration
-router.get('/wheel/config', (req, res) => {
+router.get('/wheel/config', async (req, res) => {
   try {
     const config = miniGameService.getWheelConfig();
+    const { playerId } = req.query;
+    let hasPlayedToday = false;
+
+    if (playerId) {
+      const user = await User.findById(playerId);
+      if (user && user.lastMiniGamePlayed) {
+        const lastPlayed = new Date(user.lastMiniGamePlayed);
+        const today = new Date();
+        if (lastPlayed.toDateString() === today.toDateString()) {
+          hasPlayedToday = true;
+        }
+      }
+    }
+
     res.json({
       success: true,
-      data: config
+      data: {
+        ...config,
+        hasPlayedToday
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -25,10 +43,28 @@ router.post('/wheel/spin', async (req, res) => {
   try {
     const { playerId, email } = req.body;
     
-    // Check if player already played today (optional rate limiting)
-    // This could be enhanced with Redis or database check
+    // Check if player already played today (per account check)
+    if (playerId) {
+      const user = await User.findById(playerId);
+      if (user && user.lastMiniGamePlayed) {
+        const lastPlayed = new Date(user.lastMiniGamePlayed);
+        const today = new Date();
+        if (lastPlayed.toDateString() === today.toDateString()) {
+          return res.status(400).json({
+            success: false,
+            message: 'Bạn đã hết lượt quay hôm nay. Vui lòng quay lại vào ngày mai!',
+            code: 'ALREADY_PLAYED'
+          });
+        }
+      }
+    }
     
     const result = await miniGameService.playSpinWheel(playerId);
+    
+    // Update last played time for user
+    if (playerId) {
+      await User.findByIdAndUpdate(playerId, { lastMiniGamePlayed: new Date() });
+    }
     
     // If won a discount, create actual coupon in database
     if (result.coupon && result.prize.type !== 'none') {
@@ -45,11 +81,16 @@ router.post('/wheel/spin', async (req, res) => {
           usageLimit: 1,
           isActive: true,
           applicableCategories: ['normal', 'electric', 'sport'],
-          createdBy: null // System generated
+          createdBy: playerId || null // Use playerId if available, otherwise null
         });
         await coupon.save();
       } catch (couponError) {
         console.error('Error saving game coupon:', couponError);
+        // If we can't save the coupon, we shouldn't tell the user they won it
+        return res.status(500).json({
+          success: false,
+          message: 'Lỗi hệ thống khi tạo mã giảm giá. Vui lòng thử lại sau.'
+        });
       }
     }
     
