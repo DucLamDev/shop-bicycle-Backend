@@ -9,6 +9,12 @@ const partnerSchema = new mongoose.Schema({
   contactPerson: String,
   email: String,
   phone: String,
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    unique: true,
+    sparse: true
+  },
   token: {
     type: String,
     required: true,

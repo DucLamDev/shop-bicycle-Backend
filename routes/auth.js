@@ -86,7 +86,8 @@ router.post('/login', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        partnerId: user.partnerId
       }
     });
   } catch (error) {
@@ -99,7 +100,9 @@ router.post('/login', async (req, res) => {
 
 router.get('/me', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
+    const user = await User.findById(req.user._id)
+      .populate('partnerId', 'name token partnerType')
+      .select('-password');
     res.json({
       success: true,
       user
@@ -133,7 +136,10 @@ router.get('/users', protect, async (req, res) => {
       };
     }
 
-    const users = await User.find(query).select('-password').sort({ createdAt: -1 });
+    const users = await User.find(query)
+      .populate('partnerId', 'name token partnerType totalCommissionEarned')
+      .select('-password')
+      .sort({ createdAt: -1 });
     
     // Get order stats for each user
     const Order = (await import('../models/Order.js')).default;
@@ -212,7 +218,7 @@ router.post('/users', protect, async (req, res) => {
       });
     }
 
-    const { name, email, password, phone, role, collaboratorInfo } = req.body;
+    const { name, email, password, phone, role, partnerId } = req.body;
 
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -227,12 +233,9 @@ router.post('/users', protect, async (req, res) => {
       email,
       password,
       phone,
-      role: role || 'user'
+      role: role || 'user',
+      partnerId: partnerId || undefined
     };
-
-    if (role === 'collaborator' && collaboratorInfo) {
-      userData.collaboratorInfo = collaboratorInfo;
-    }
 
     const user = await User.create(userData);
 
@@ -244,7 +247,7 @@ router.post('/users', protect, async (req, res) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
-        collaboratorInfo: user.collaboratorInfo,
+        partnerId: user.partnerId,
         createdAt: user.createdAt
       }
     });
@@ -266,7 +269,7 @@ router.put('/users/:id', protect, async (req, res) => {
       });
     }
 
-    const { name, email, phone, role, collaboratorInfo, password } = req.body;
+    const { name, email, phone, role, partnerId, password } = req.body;
 
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -291,16 +294,13 @@ router.put('/users/:id', protect, async (req, res) => {
     user.email = email || user.email;
     user.phone = phone || user.phone;
     user.role = role || user.role;
+    
+    if (partnerId !== undefined) {
+      user.partnerId = partnerId || undefined;
+    }
 
     if (password) {
       user.password = password;
-    }
-
-    if (role === 'collaborator' && collaboratorInfo) {
-      user.collaboratorInfo = {
-        ...user.collaboratorInfo,
-        ...collaboratorInfo
-      };
     }
 
     await user.save();
@@ -313,7 +313,7 @@ router.put('/users/:id', protect, async (req, res) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
-        collaboratorInfo: user.collaboratorInfo,
+        partnerId: user.partnerId,
         createdAt: user.createdAt
       }
     });
@@ -365,31 +365,35 @@ router.delete('/users/:id', protect, async (req, res) => {
   }
 });
 
-// Get collaborator dashboard (for logged-in collaborators)
-router.get('/collaborator/dashboard', protect, async (req, res) => {
+// Get partner dashboard (for logged-in partners)
+router.get('/partner/dashboard', protect, async (req, res) => {
   try {
-    if (req.user.role !== 'collaborator') {
+    if (!req.user.partnerId) {
       return res.status(403).json({
         success: false,
-        message: 'Not authorized - collaborator role required'
+        message: 'Not authorized - partner account required'
       });
     }
 
+    const Partner = (await import('../models/Partner.js')).default;
     const Order = (await import('../models/Order.js')).default;
     
-    // Get orders referred by this collaborator
+    const partner = await Partner.findById(req.user.partnerId);
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner not found'
+      });
+    }
+    
+    // Get orders referred by this partner (using token)
     const orders = await Order.find({ 
-      'referredBy.collaboratorId': req.user._id 
+      'referredBy.token': partner.token
     }).sort({ createdAt: -1 });
 
     const totalOrders = orders.length;
     const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
     
-    const collaboratorInfo = req.user.collaboratorInfo || {};
-    const totalCommission = collaboratorInfo.totalCommission || 0;
-    const paidCommission = collaboratorInfo.paidCommission || 0;
-    const pendingCommission = collaboratorInfo.pendingCommission || 0;
-
     // Monthly stats
     const monthlyStats = [];
     const now = new Date();
@@ -403,7 +407,12 @@ router.get('/collaborator/dashboard', protect, async (req, res) => {
       });
 
       const monthRevenue = monthOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-      const monthCommission = monthOrders.reduce((sum, order) => sum + (order.collaboratorCommission || 0), 0);
+      let monthCommission = 0;
+      monthOrders.forEach(order => {
+        if (order.items) {
+          monthCommission += partner.calculateCommission(order.items);
+        }
+      });
 
       monthlyStats.push({
         month: `${monthStart.getMonth() + 1}月`,
@@ -427,51 +436,78 @@ router.get('/collaborator/dashboard', protect, async (req, res) => {
           const qty = item.quantity || 1;
           if (categoryStats[category]) {
             categoryStats[category].count += qty;
-            const rate = collaboratorInfo.commissionRate?.[`${category}Bike`] || 0;
-            categoryStats[category].commission += rate * qty;
+            if (category === 'electric') {
+              categoryStats[category].commission += partner.ctvCommission.electricBike * qty;
+            } else if (category === 'sport') {
+              categoryStats[category].commission += partner.ctvCommission.sportBike * qty;
+            } else {
+              categoryStats[category].commission += partner.ctvCommission.normalBike * qty;
+            }
           }
         });
       }
     });
 
     // Recent orders
-    const recentOrders = orders.slice(0, 10).map(order => ({
-      id: order._id,
-      orderNumber: order.orderNumber,
-      customer: order.customer?.name || 'N/A',
-      totalAmount: order.totalAmount,
-      commission: order.collaboratorCommission || 0,
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-      createdAt: order.createdAt
-    }));
+    const recentOrders = orders.slice(0, 10).map(order => {
+      const commission = order.items ? partner.calculateCommission(order.items) : 0;
+      return {
+        id: order._id,
+        orderNumber: order.orderNumber,
+        customer: order.customer?.name || 'N/A',
+        totalAmount: order.totalAmount,
+        commission,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        createdAt: order.createdAt
+      };
+    });
 
     res.json({
       success: true,
       data: {
         collaborator: {
-          id: req.user._id,
-          name: req.user.name,
-          email: req.user.email,
-          commissionRate: collaboratorInfo.commissionRate || {
-            electricBike: 5000,
-            normalBike: 2000,
-            sportBike: 3000
+          id: partner._id,
+          name: partner.name,
+          email: partner.email || req.user.email,
+          commissionRate: {
+            electricBike: partner.ctvCommission.electricBike,
+            normalBike: partner.ctvCommission.normalBike,
+            sportBike: partner.ctvCommission.sportBike
           }
         },
         stats: {
           totalOrders,
           totalRevenue,
-          totalCommission,
-          paidCommission,
-          pendingCommission,
-          referralCode: `CTV${req.user._id.toString().slice(-6).toUpperCase()}`
+          totalCommission: partner.totalCommissionEarned,
+          paidCommission: partner.commissionPaid,
+          pendingCommission: partner.commissionPending,
+          referralCode: partner.token
         },
         monthlyStats,
         categoryStats,
         recentOrders
       }
     });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// Keep old route for backward compatibility but redirect to partner route
+router.get('/collaborator/dashboard', protect, async (req, res) => {
+  try {
+    if (!req.user.partnerId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized - partner account required'
+      });
+    }
+    // Forward to partner dashboard
+    return res.redirect('/api/auth/partner/dashboard');
   } catch (error) {
     res.status(500).json({
       success: false,

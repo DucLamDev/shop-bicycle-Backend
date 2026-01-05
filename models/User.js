@@ -37,22 +37,13 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'user', 'collaborator'],
+    enum: ['admin', 'user'],
     default: 'user'
   },
-  collaboratorInfo: {
-    partnerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Partner'
-    },
-    commissionRate: {
-      electricBike: { type: Number, default: 5000 },
-      normalBike: { type: Number, default: 2000 },
-      sportBike: { type: Number, default: 3000 }
-    },
-    totalCommission: { type: Number, default: 0 },
-    paidCommission: { type: Number, default: 0 },
-    pendingCommission: { type: Number, default: 0 }
+  partnerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Partner',
+    sparse: true
   },
   lastMiniGamePlayed: {
     type: Date

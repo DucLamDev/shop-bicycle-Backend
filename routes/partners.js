@@ -8,7 +8,9 @@ const router = express.Router();
 
 router.get('/', protect, authorize('admin'), async (req, res) => {
   try {
-    const partners = await Partner.find().sort({ createdAt: -1 });
+    const partners = await Partner.find()
+      .populate('userId', 'name email role')
+      .sort({ createdAt: -1 });
     res.json({
       success: true,
       data: partners
@@ -73,7 +75,8 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
 
 router.get('/:id', protect, authorize('admin'), async (req, res) => {
   try {
-    const partner = await Partner.findById(req.params.id);
+    const partner = await Partner.findById(req.params.id)
+      .populate('userId', 'name email role');
     
     if (!partner) {
       return res.status(404).json({
@@ -135,6 +138,77 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
     res.json({
       success: true,
       message: 'Partner deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// Create user account for partner
+router.post('/:id/create-account', protect, authorize('admin'), async (req, res) => {
+  try {
+    const partner = await Partner.findById(req.params.id);
+    
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner not found'
+      });
+    }
+
+    if (partner.userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Partner already has a user account'
+      });
+    }
+
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required'
+      });
+    }
+
+    // Import User model
+    const User = (await import('../models/User.js')).default;
+
+    // Check if email already exists
+    if (partner.email) {
+      const existingUser = await User.findOne({ email: partner.email });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email already registered'
+        });
+      }
+    }
+
+    // Create user account
+    const user = await User.create({
+      name: partner.name,
+      email: partner.email || `partner_${partner._id}@temp.com`,
+      password: password,
+      phone: partner.phone,
+      role: 'user',
+      partnerId: partner._id
+    });
+
+    // Link partner to user
+    partner.userId = user._id;
+    await partner.save();
+
+    const populatedPartner = await Partner.findById(partner._id)
+      .populate('userId', 'name email role');
+
+    res.json({
+      success: true,
+      data: populatedPartner,
+      message: 'User account created and linked successfully'
     });
   } catch (error) {
     res.status(500).json({
