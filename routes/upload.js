@@ -84,6 +84,41 @@ router.post('/product-images', protect, adminOnly, async (req, res) => {
 });
 
 /**
+ * @route   POST /api/upload/receipt
+ * @desc    Upload payment receipt image to Cloudinary
+ * @access  Public (for customer checkout)
+ */
+router.post('/receipt', async (req, res) => {
+  try {
+    const { image } = req.body;
+
+    if (!image) {
+      return res.status(400).json({
+        success: false,
+        message: 'Receipt image is required'
+      });
+    }
+
+    const result = await uploadImage(image, 'receipts');
+
+    res.json({
+      success: true,
+      url: result.url,
+      data: {
+        url: result.url,
+        publicId: result.publicId
+      }
+    });
+  } catch (error) {
+    console.error('Receipt upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to upload receipt image'
+    });
+  }
+});
+
+/**
  * @route   POST /api/upload/student-id
  * @desc    Upload student ID card image to Cloudinary
  * @access  Public (for student verification)

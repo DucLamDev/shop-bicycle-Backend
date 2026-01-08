@@ -111,13 +111,15 @@ const orderSchema = new mongoose.Schema({
     accountName: String,
     transferContent: String,
     transferredAt: Date,
-    verified: { type: Boolean, default: false }
+    verified: { type: Boolean, default: false },
+    receiptImage: String // URL of the transfer receipt/bill image uploaded by customer
   },
   // Visa card payment details
   visaCardInfo: {
     last4Digits: String,
     transactionId: String,
-    paidAt: Date
+    paidAt: Date,
+    receiptImage: String // URL of the payment receipt/bill image uploaded by customer
   },
   paymentStatus: {
     type: String,

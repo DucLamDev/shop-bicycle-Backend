@@ -442,6 +442,14 @@ router.get('/:orderId/html', async (req, res) => {
       🖨️ 印刷する / Print
     </button>
   </div>
+  <script>
+    // Auto-trigger print dialog when page loads
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 500);
+    };
+  </script>
 </body>
 </html>
     `;

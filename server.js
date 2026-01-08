@@ -28,6 +28,7 @@ import affiliateRoutes from './routes/affiliate.js';
 import studentVerificationRoutes from './routes/studentVerification.js';
 import chatRoutes from './routes/chat.js';
 import uploadRoutes from './routes/upload.js';
+import settingsRoutes from './routes/settings.js';
 
 dotenv.config();
 
@@ -61,8 +62,9 @@ initializePassport();
 app.use(passport.initialize());
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: 1000, // Allow 1000 requests per minute
+  message: { message: 'Too many requests, please try again later.' }
 });
 app.use('/api/', limiter);
 
@@ -87,6 +89,7 @@ app.use('/api/affiliate', affiliateRoutes);
 app.use('/api/student-verification', studentVerificationRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });
