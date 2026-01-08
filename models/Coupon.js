@@ -46,6 +46,16 @@ const couponSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // Maximum number of orders this coupon can be applied to
+  maxOrders: {
+    type: Number,
+    default: null // null means unlimited
+  },
+  // Maximum number of products per order this coupon applies to
+  maxProducts: {
+    type: Number,
+    default: null // null means apply to all products in order
+  },
   isActive: {
     type: Boolean,
     default: true

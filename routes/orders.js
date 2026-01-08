@@ -21,7 +21,7 @@ const generateOrderNumber = () => {
 
 router.post('/', verifyPartnerToken, async (req, res) => {
   try {
-    const { customer, items, paymentMethod, notes, deliveryPreference, couponCode, shippingOption } = req.body;
+    const { customer, items, paymentMethod, notes, deliveryPreference, couponCode, couponDiscount, shippingOption, bankTransferInfo, visaCardInfo } = req.body;
 
     let subtotal = 0;
     const orderItems = [];
@@ -128,8 +128,17 @@ router.post('/', verifyPartnerToken, async (req, res) => {
       }
     }
 
+    // Apply coupon discount if provided
+    let couponDiscountData = { code: '', percent: 0, amount: 0 };
+    if (couponDiscount && couponDiscount.code && couponDiscount.amount) {
+      couponDiscountData = {
+        code: couponDiscount.code,
+        amount: couponDiscount.amount
+      };
+    }
+
     // Calculate total amount
-    const totalAmount = subtotal - loyaltyDiscount.amount + shippingFee + codFee;
+    const totalAmount = subtotal - loyaltyDiscount.amount - couponDiscountData.amount + shippingFee + codFee;
 
     // Generate restaurant coupon for bike purchase
     const restaurantCoupon = miniGameService.generateRestaurantCoupon();
@@ -146,6 +155,7 @@ router.post('/', verifyPartnerToken, async (req, res) => {
       items: orderItems,
       subtotal,
       loyaltyDiscount,
+      couponDiscount: couponDiscountData,
       totalAmount,
       shippingFee,
       shippingMethod: shippingMethodData,
@@ -153,6 +163,17 @@ router.post('/', verifyPartnerToken, async (req, res) => {
       ctvCommission,
       codFee,
       paymentMethod,
+      bankTransferInfo: paymentMethod === 'bank_transfer' && bankTransferInfo ? {
+        bankName: bankTransferInfo.bankName,
+        accountNumber: bankTransferInfo.accountNumber,
+        accountName: bankTransferInfo.accountName,
+        transferContent: bankTransferInfo.transferContent,
+        receiptImage: bankTransferInfo.receiptImage || null,
+        verified: false
+      } : undefined,
+      visaCardInfo: paymentMethod === 'visa_card' && visaCardInfo ? {
+        receiptImage: visaCardInfo.receiptImage || null
+      } : undefined,
       deliveryPreference: deliveryPreference ? {
         preferredDate: deliveryPreference.preferredDate,
         preferredTimeSlot: deliveryPreference.preferredTimeSlot || 'anytime',
