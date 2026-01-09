@@ -21,7 +21,7 @@ const generateOrderNumber = () => {
 
 router.post('/', verifyPartnerToken, async (req, res) => {
   try {
-    const { customer, items, paymentMethod, notes, deliveryPreference, couponCode, couponDiscount, shippingOption, bankTransferInfo, visaCardInfo } = req.body;
+    const { customer, items, paymentMethod, notes, deliveryPreference, couponCode, couponDiscount, shippingOption, bankTransferInfo, visaCardInfo, studentIdImage } = req.body;
 
     let subtotal = 0;
     const orderItems = [];
@@ -81,9 +81,10 @@ router.post('/', verifyPartnerToken, async (req, res) => {
       await product.save();
     }
 
-    // Check for returning customer discount
+    // Check for returning customer discount (flat 500 yen for returning customers)
     let loyaltyDiscount = { percent: 0, amount: 0 };
     let existingCustomer = null;
+    const RETURNING_CUSTOMER_FLAT_DISCOUNT = 500; // 500 yen flat discount
     
     if (customer.email || customer.phone) {
       existingCustomer = await Customer.findOne({
@@ -93,9 +94,10 @@ router.post('/', verifyPartnerToken, async (req, res) => {
         ]
       });
 
-      if (existingCustomer && existingCustomer.discountPercent > 0) {
-        loyaltyDiscount.percent = existingCustomer.discountPercent;
-        loyaltyDiscount.amount = Math.round(subtotal * (existingCustomer.discountPercent / 100));
+      // Returning customers get flat 500 yen discount instead of percentage
+      if (existingCustomer && existingCustomer.totalOrders > 0) {
+        loyaltyDiscount.percent = 0; // No percentage discount
+        loyaltyDiscount.amount = RETURNING_CUSTOMER_FLAT_DISCOUNT; // Flat 500 yen
       }
     }
 
@@ -182,7 +184,13 @@ router.post('/', verifyPartnerToken, async (req, res) => {
         specialInstructions: deliveryPreference.specialInstructions
       } : undefined,
       notes,
-      partner: req.partner?._id
+      partner: req.partner?._id,
+      // Student ID image for KIJ discount verification
+      studentIdImage: studentIdImage && couponDiscount?.code?.toUpperCase() === 'KIJ' ? {
+        url: studentIdImage,
+        uploadedAt: new Date(),
+        verified: false
+      } : undefined
     });
 
     // Update or create customer record for loyalty tracking
@@ -444,6 +452,73 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
       success: true,
       message: 'Order deleted successfully'
     });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// Verify or reject student ID for KIJ discount
+router.put('/:id/verify-student-id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { action, rejectionReason } = req.body; // action: 'verify' or 'reject'
+    
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    if (!order.studentIdImage?.url) {
+      return res.status(400).json({
+        success: false,
+        message: 'This order does not have a student ID image'
+      });
+    }
+
+    if (action === 'verify') {
+      order.studentIdImage.verified = true;
+      order.studentIdImage.verifiedBy = req.user._id;
+      order.studentIdImage.verifiedAt = new Date();
+      order.studentIdImage.rejectionReason = null;
+      
+      await order.save();
+      
+      res.json({
+        success: true,
+        message: 'Student ID verified successfully',
+        data: order
+      });
+    } else if (action === 'reject') {
+      order.studentIdImage.verified = false;
+      order.studentIdImage.verifiedBy = req.user._id;
+      order.studentIdImage.verifiedAt = new Date();
+      order.studentIdImage.rejectionReason = rejectionReason || 'Thẻ học sinh không hợp lệ';
+      
+      // Remove KIJ discount from order
+      if (order.couponDiscount?.code?.toUpperCase() === 'KIJ') {
+        const discountAmount = order.couponDiscount.amount || 0;
+        order.totalAmount += discountAmount; // Add back the discount
+        order.couponDiscount = { code: '', percent: 0, amount: 0 };
+      }
+      
+      await order.save();
+      
+      res.json({
+        success: true,
+        message: 'Student ID rejected, KIJ discount removed',
+        data: order
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid action. Use "verify" or "reject"'
+      });
+    }
   } catch (error) {
     res.status(500).json({
       success: false,

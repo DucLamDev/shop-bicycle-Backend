@@ -1,5 +1,6 @@
 import express from 'express';
 import Coupon from '../models/Coupon.js';
+import StudentVerification from '../models/StudentVerification.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -17,7 +18,7 @@ router.get('/', protect, authorize('admin'), async (req, res) => {
 // Validate coupon (public)
 router.post('/validate', async (req, res) => {
   try {
-    const { code, orderAmount, categories } = req.body;
+    const { code, orderAmount, categories, email } = req.body;
 
     const coupon = await Coupon.findOne({ code: code.toUpperCase() });
     
@@ -27,6 +28,59 @@ router.post('/validate', async (req, res) => {
 
     if (!coupon.isValid()) {
       return res.status(400).json({ success: false, message: 'Mã khuyến mãi đã hết hạn hoặc đã hết lượt sử dụng' });
+    }
+
+    // Check if this is a student discount code (starts with STU)
+    if (code.toUpperCase().startsWith('STU')) {
+      if (!email) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Vui lòng cung cấp email để xác minh quyền sử dụng mã sinh viên' 
+        });
+      }
+
+      // Check if user has an approved student verification with this code
+      const studentVerification = await StudentVerification.findOne({
+        email: email.toLowerCase(),
+        status: 'approved',
+        discountCode: code.toUpperCase()
+      });
+
+      if (!studentVerification) {
+        // Check if user has any approved verification
+        const anyVerification = await StudentVerification.findOne({
+          email: email.toLowerCase(),
+          status: 'approved'
+        });
+
+        if (!anyVerification) {
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Email này chưa được xác minh là học sinh trường KIJ. Vui lòng xác minh tại trang xác minh sinh viên.' 
+          });
+        } else {
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Mã giảm giá này không thuộc về tài khoản của bạn. Vui lòng sử dụng mã: ' + anyVerification.discountCode 
+          });
+        }
+      }
+
+      // Check if discount code has been used
+      if (studentVerification.discountUsed) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Mã giảm giá sinh viên này đã được sử dụng' 
+        });
+      }
+
+      // Check if discount code has expired
+      if (studentVerification.discountExpiresAt && new Date() > studentVerification.discountExpiresAt) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Mã giảm giá sinh viên này đã hết hạn' 
+        });
+      }
     }
 
     if (orderAmount < coupon.minOrderAmount) {

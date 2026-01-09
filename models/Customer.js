@@ -81,24 +81,26 @@ const customerSchema = new mongoose.Schema({
 customerSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   
-  // Auto calculate loyalty tier and discount based on total orders and spent
+  // Auto calculate loyalty tier based on total orders and spent
+  // Note: For returning customers, discount is now a flat 500 yen instead of percentage
   if (this.totalOrders >= 20 || this.totalSpent >= 100000000) {
     this.loyaltyTier = 'diamond';
-    this.discountPercent = 15;
+    this.discountPercent = 0; // Flat discount applied separately
     this.isVIP = true;
   } else if (this.totalOrders >= 15 || this.totalSpent >= 70000000) {
     this.loyaltyTier = 'platinum';
-    this.discountPercent = 12;
+    this.discountPercent = 0;
     this.isVIP = true;
   } else if (this.totalOrders >= 10 || this.totalSpent >= 50000000) {
     this.loyaltyTier = 'gold';
-    this.discountPercent = 10;
+    this.discountPercent = 0;
   } else if (this.totalOrders >= 5 || this.totalSpent >= 25000000) {
     this.loyaltyTier = 'silver';
-    this.discountPercent = 7;
-  } else if (this.totalOrders >= 2 || this.totalSpent >= 10000000) {
+    this.discountPercent = 0;
+  } else if (this.totalOrders >= 1) {
+    // Returning customer (has at least 1 previous order)
     this.loyaltyTier = 'bronze';
-    this.discountPercent = 5;
+    this.discountPercent = 0; // Flat 500 yen discount instead of percentage
   }
   
   // Calculate average order value
@@ -113,13 +115,14 @@ customerSchema.pre('save', function(next) {
 });
 
 // Static method to get tier benefits
+// Returning customers now get flat 500 yen discount per order instead of percentage
 customerSchema.statics.getTierBenefits = function() {
   return {
-    bronze: { discount: 5, description: 'Giảm 5% cho đơn hàng tiếp theo' },
-    silver: { discount: 7, description: 'Giảm 7% + Freeship đơn từ 5tr' },
-    gold: { discount: 10, description: 'Giảm 10% + Freeship + Quà sinh nhật' },
-    platinum: { discount: 12, description: 'Giảm 12% + Freeship + Ưu tiên hỗ trợ' },
-    diamond: { discount: 15, description: 'Giảm 15% + Freeship + VIP Support + Sự kiện độc quyền' }
+    bronze: { discount: 500, discountType: 'flat', description: 'Giảm ¥500 cho đơn hàng tiếp theo' },
+    silver: { discount: 500, discountType: 'flat', description: 'Giảm ¥500 + Freeship đơn từ ¥50,000' },
+    gold: { discount: 500, discountType: 'flat', description: 'Giảm ¥500 + Freeship + Quà sinh nhật' },
+    platinum: { discount: 500, discountType: 'flat', description: 'Giảm ¥500 + Freeship + Ưu tiên hỗ trợ' },
+    diamond: { discount: 500, discountType: 'flat', description: 'Giảm ¥500 + Freeship + VIP Support + Sự kiện độc quyền' }
   };
 };
 

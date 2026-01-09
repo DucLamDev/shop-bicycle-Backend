@@ -61,6 +61,15 @@ const orderSchema = new mongoose.Schema({
     percent: { type: Number, default: 0 },
     amount: { type: Number, default: 0 }
   },
+  // Student ID image for KIJ discount verification
+  studentIdImage: {
+    url: String,
+    uploadedAt: Date,
+    verified: { type: Boolean, default: false },
+    verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    verifiedAt: Date,
+    rejectionReason: String
+  },
   totalAmount: {
     type: Number,
     required: true
@@ -128,7 +137,7 @@ const orderSchema = new mongoose.Schema({
   },
   orderStatus: {
     type: String,
-    enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
+    enum: ['pending', 'confirmed', 'shipping', 'delivered', 'cancelled'],
     default: 'pending'
   },
   // Delivery time preference

@@ -201,17 +201,22 @@ router.post('/check-discount', async (req, res) => {
 
     const tierBenefits = Customer.getTierBenefits();
 
+    // Returning customers get flat 500 yen discount
+    const flatDiscount = 500;
+    const tierBenefit = tierBenefits[customer.loyaltyTier];
+
     res.json({
       success: true,
       data: {
         isNewCustomer: false,
-        discount: customer.discountPercent,
+        discount: flatDiscount, // Flat 500 yen discount
+        discountType: 'flat', // 'flat' instead of 'percent'
         tier: customer.loyaltyTier,
         tierName: customer.loyaltyTier.charAt(0).toUpperCase() + customer.loyaltyTier.slice(1),
         totalOrders: customer.totalOrders,
         loyaltyPoints: customer.loyaltyPoints,
-        benefits: tierBenefits[customer.loyaltyTier],
-        message: `Khách hàng ${customer.loyaltyTier.toUpperCase()} - Giảm ${customer.discountPercent}%`
+        benefits: tierBenefit,
+        message: `Khách hàng ${customer.loyaltyTier.toUpperCase()} - Giảm ¥500`
       }
     });
   } catch (error) {

@@ -11,9 +11,39 @@ router.get('/', protect, authorize('admin'), async (req, res) => {
     const partners = await Partner.find()
       .populate('userId', 'name email role')
       .sort({ createdAt: -1 });
+    
+    // Import Order model to get stats for each partner
+    const Order = (await import('../models/Order.js')).default;
+    
+    // Get stats for each partner
+    const partnersWithStats = await Promise.all(partners.map(async (partner) => {
+      const partnerOrders = await Order.find({ partner: partner._id });
+      
+      const totalOrders = partnerOrders.length;
+      const totalSales = partnerOrders
+        .filter(o => o.orderStatus !== 'cancelled')
+        .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+      const totalCommissionEarned = partnerOrders
+        .filter(o => o.orderStatus === 'delivered')
+        .reduce((sum, o) => sum + (o.ctvCommission?.amount || 0), 0);
+      const commissionPaid = partnerOrders
+        .filter(o => o.ctvCommission?.paid)
+        .reduce((sum, o) => sum + (o.ctvCommission?.amount || 0), 0);
+      const commissionPending = totalCommissionEarned - commissionPaid;
+      
+      return {
+        ...partner.toObject(),
+        totalOrders,
+        totalSales,
+        totalCommissionEarned,
+        commissionPaid,
+        commissionPending
+      };
+    }));
+    
     res.json({
       success: true,
-      data: partners
+      data: partnersWithStats
     });
   } catch (error) {
     res.status(500).json({
@@ -209,6 +239,92 @@ router.post('/:id/create-account', protect, authorize('admin'), async (req, res)
       success: true,
       data: populatedPartner,
       message: 'User account created and linked successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// Get partner stats (for partner dashboard)
+router.get('/:id/stats', protect, async (req, res) => {
+  try {
+    const partner = await Partner.findById(req.params.id);
+    
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner not found'
+      });
+    }
+
+    // Import Order model
+    const Order = (await import('../models/Order.js')).default;
+
+    // Get orders from this partner
+    const partnerOrders = await Order.find({ partner: partner._id });
+    
+    // Calculate stats
+    const totalOrders = partnerOrders.length;
+    const completedOrders = partnerOrders.filter(o => o.orderStatus === 'delivered').length;
+    const totalRevenue = partnerOrders
+      .filter(o => o.orderStatus !== 'cancelled')
+      .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    
+    // Calculate commission earned
+    const totalCommission = partnerOrders
+      .filter(o => o.orderStatus === 'delivered')
+      .reduce((sum, o) => sum + (o.ctvCommission?.amount || 0), 0);
+    
+    const paidCommission = partnerOrders
+      .filter(o => o.ctvCommission?.paid)
+      .reduce((sum, o) => sum + (o.ctvCommission?.amount || 0), 0);
+
+    // Get this month stats
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    
+    const thisMonthOrders = partnerOrders.filter(o => new Date(o.createdAt) >= startOfMonth);
+    const thisMonthRevenue = thisMonthOrders
+      .filter(o => o.orderStatus !== 'cancelled')
+      .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    const thisMonthCommission = thisMonthOrders
+      .filter(o => o.orderStatus === 'delivered')
+      .reduce((sum, o) => sum + (o.ctvCommission?.amount || 0), 0);
+
+    // Recent orders
+    const recentOrders = await Order.find({ partner: partner._id })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .populate('items.product', 'name');
+
+    res.json({
+      success: true,
+      data: {
+        totalOrders,
+        completedOrders,
+        totalRevenue,
+        totalCommission,
+        paidCommission,
+        unpaidCommission: totalCommission - paidCommission,
+        thisMonth: {
+          orders: thisMonthOrders.length,
+          revenue: thisMonthRevenue,
+          commission: thisMonthCommission
+        },
+        recentOrders: recentOrders.map(o => ({
+          _id: o._id,
+          orderNumber: o.orderNumber,
+          customer: o.customer?.name,
+          totalAmount: o.totalAmount,
+          commission: o.ctvCommission?.amount || 0,
+          status: o.orderStatus,
+          createdAt: o.createdAt
+        }))
+      }
     });
   } catch (error) {
     res.status(500).json({

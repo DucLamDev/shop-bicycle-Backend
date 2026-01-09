@@ -75,7 +75,12 @@ const templates = {
               <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 20px;">
                 <h4>🎁 ${isJa ? '特典クーポン' : 'Mã khuyến mãi quán ăn'}</h4>
                 <p>${isJa ? 'ご購入ありがとうございます！提携レストランでご利用いただけるクーポンをプレゼント：' : 'Cảm ơn bạn đã mua xe! Nhận ngay mã giảm giá tại quán ăn đối tác:'}</p>
-                <p style="font-size: 24px; font-weight: bold; color: #d97706;">${order.restaurantCoupon}</p>
+                <p style="font-size: 24px; font-weight: bold; color: #d97706; font-family: monospace;">${typeof order.restaurantCoupon === 'object' ? order.restaurantCoupon.code : order.restaurantCoupon}</p>
+                ${typeof order.restaurantCoupon === 'object' && order.restaurantCoupon.discountAmount ? `
+                <p style="color: #92400e; font-size: 14px;">${isJa ? '割引額' : 'Giảm giá'}: ¥${order.restaurantCoupon.discountAmount.toLocaleString()}</p>
+                <p style="color: #92400e; font-size: 14px;">${isJa ? 'レストラン' : 'Quán ăn'}: ${order.restaurantCoupon.restaurant || 'Đối tác'}</p>
+                <p style="color: #92400e; font-size: 12px;">${isJa ? '有効期限' : 'Hạn sử dụng'}: ${order.restaurantCoupon.validUntil ? new Date(order.restaurantCoupon.validUntil).toLocaleDateString(isJa ? 'ja-JP' : 'vi-VN') : ''}</p>
+                ` : ''}
               </div>
               ` : ''}
             </div>
@@ -96,17 +101,15 @@ const templates = {
     const statusLabels = {
       vi: {
         pending: 'Chờ xử lý',
-        confirmed: 'Đã xác nhận',
         processing: 'Đang xử lý',
-        shipped: 'Đang giao hàng',
+        shipping: 'Đang giao hàng',
         delivered: 'Đã giao hàng',
         cancelled: 'Đã hủy'
       },
       ja: {
         pending: '処理待ち',
-        confirmed: '確認済み',
         processing: '処理中',
-        shipped: '配送中',
+        shipping: '配送中',
         delivered: '配達完了',
         cancelled: 'キャンセル'
       }

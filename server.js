@@ -29,6 +29,7 @@ import studentVerificationRoutes from './routes/studentVerification.js';
 import chatRoutes from './routes/chat.js';
 import uploadRoutes from './routes/upload.js';
 import settingsRoutes from './routes/settings.js';
+import notificationsRoutes from './routes/notifications.js';
 
 dotenv.config();
 
@@ -90,6 +91,7 @@ app.use('/api/student-verification', studentVerificationRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });
